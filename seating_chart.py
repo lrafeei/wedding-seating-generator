@@ -229,10 +229,10 @@ def valid_csv(file_name):
         return False
 
 
-if __name__ == "__main__":
+def main(csv_file):
 	# Test to see if input is valid CSV.
-	if sys.argv[1] and valid_csv(sys.argv[1]):
-		relationship_matrix_file = sys.argv[1]	
+	if csv_file and valid_csv(csv_file):
+		relationship_matrix_file = csv_file
 	else:
 		raise Exception("CSV not valid.  Exiting Program.")  		
 
@@ -284,3 +284,6 @@ if __name__ == "__main__":
 				file.write("\n")
 			file.write(str(cur_cost))
 			file.write("\n\n")
+
+if __name__ == "__main__":
+	main(sys.argv[1])

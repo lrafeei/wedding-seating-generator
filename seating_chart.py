@@ -217,7 +217,7 @@ def initialize(relationship_matrix_file, table_size):
 def valid_csv(file_name):
     try:
         with open(file_name, newline='') as csvfile:
-            start = csvfile.read(4096)
+            start = csvfile.read()
 
             # isprintable does not allow newlines
 			# printable does not allow umlauts
@@ -284,6 +284,7 @@ def main(csv_file):
 				file.write("\n")
 			file.write(str(cur_cost))
 			file.write("\n\n")
+
 
 if __name__ == "__main__":
 	main(sys.argv[1])

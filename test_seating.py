@@ -1,34 +1,39 @@
 import pytest
+from seating_chart import valid_csv
 import io
 import sys
 
 
 # std_input = io.StringIO("")
 
-# # Test inputs from command line
-# @pytest.parametrize("input", [])
-# def test_valid_csv(input):
-#     pass
+# Test inputs from command line
+@pytest.mark.parametrize("csv_file,expected", [
+    ("guest_matrix.csv", True),
+    ("guest_matrix_bad.csv", False),
+])
+def test_valid_csv(csv_file,expected):
+    assert valid_csv(csv_file) == expected
+
 
 # # parametrize valid, not valid, uneven, weird values in the middle of the matrix (these are not actually tested)
 # @pytest.parametrize("input", [])
 # def test_valid_file_input(input):
 #     pass
 
-# parametrize
-@pytest.mark.parametrize("table_size,valid", [
-    (0, False),
-    (10, True),
-    (-9, False),
-    (10.2, False),
-    ("Not an int", False),
-])
-def test_valid_table_size(monkeypatch, table_size, valid):
-    table_size_input = io.StringIO(str(table_size))
-    # THIS DOES NOT WORK
-    with pytest.raises(Exception) as error:
-        monkeypatch.setattr("sys.stdin", table_size_input, raising=True)
-    assert (error.type == ValueError) == valid
+# # parametrize
+# @pytest.mark.parametrize("table_size,valid", [
+#     (0, False),
+#     (10, True),
+#     (-9, False),
+#     (10.2, False),
+#     ("Not an int", False),
+# ])
+# def test_valid_table_size(monkeypatch, table_size, valid):
+#     table_size_input = io.StringIO(str(table_size))
+#     # THIS DOES NOT WORK
+#     with pytest.raises(Exception) as error:
+#         monkeypatch.setattr("sys.stdin", table_size_input, raising=True)
+#     assert (error.type == ValueError) == valid
 
 
 # # parametrize

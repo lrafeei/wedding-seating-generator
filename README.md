@@ -40,9 +40,6 @@ Ten seating arrangement options for all guests per table.  This will be in "seat
   * This program assumes (for now) that tables are the same size/hold the same number of people.
   * This program does not dictate the seating arrangements within the table (only assigns people to a specific table).
 
-## Left to do for cleanup of code:
-  * Add tests!
-
 ## To do for future iterations:
   * Add non-mutable settings.  This would make it so that certain pairings (i.e. couples) cannot be separated under any circumstances.
   * Feature: Implement multiprocessing for annealing iterations

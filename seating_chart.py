@@ -59,10 +59,13 @@ def random_initial_table_generator(guest_count, guests_per_table):
 
 def anneal(
 	pos_current,
+	guest_list,
+	table_count,
+	relationship_matrix,
 	queue=None,
 	temperature=1.0,
 	temperature_min=0.00001,
-	alpha=0.95,
+	alpha=0.99,
 	n_iter=100,
 ):
 	def reshape_to_table_seats(position):
@@ -181,7 +184,6 @@ def initialize(relationship_matrix_file, table_size):
 
 	TABLE_SIZE = table_size
 	GUEST_COUNT = len(guest_list)
-	table_count = math.ceil(GUEST_COUNT / TABLE_SIZE)
 
 	# This does not work with uneven guest counts, so we need to make filler guests
 	# who have no relationship established with anyone.
@@ -207,7 +209,7 @@ def initialize(relationship_matrix_file, table_size):
 	)
 	relationship_matrix = relationship_matrix_raw / 100
 
-	return GUEST_COUNT, guest_list, relationship_matrix, table_count
+	return GUEST_COUNT, guest_list, relationship_matrix
 
 
 
@@ -222,7 +224,8 @@ if __name__ == "__main__":
 	print("Calculating now.  Results will be available in seating_options.txt")
 
 	top_10_result = []
-	GUEST_COUNT, guest_list, relationship_matrix, table_count = initialize(relationship_matrix_file, TABLE_SIZE)
+	GUEST_COUNT, guest_list, relationship_matrix = initialize(relationship_matrix_file, TABLE_SIZE)
+	table_count = math.ceil(GUEST_COUNT / TABLE_SIZE)
 
 	# Logic for running annealing 10 times while extracting
 	# top 10 results from those combined runs:
@@ -232,8 +235,8 @@ if __name__ == "__main__":
 		# random array.  This gives us our starting point for our program.
 		# The shuffling will happen from this point.
 		table_seats_a = random_initial_table_generator(GUEST_COUNT, TABLE_SIZE)  		
-		top_10_result = anneal(table_seats_a, top_10_result, alpha=0.99, n_iter=GRANULARITY)
-		print("%d %% Percent Complete" % ((percent+1)*10))
+		top_10_result = anneal(table_seats_a, guest_list, table_count, relationship_matrix, top_10_result, n_iter=GRANULARITY)
+		print("%d Percent Complete" % ((percent+1)*10))
 
 	with open("seating_options.txt", "a") as file:
 		for result in top_10_result:

@@ -75,7 +75,7 @@ def anneal(
 
 	def cost(position):
 		table_seats = reshape_to_table_seats(position)
-		table_costs = table_seats * relationship_matrix * table_seats.T
+		table_costs = table_seats.dot(relationship_matrix.dot(table_seats.T))
 		table_cost = np.trace(table_costs)
 		return table_cost
 
@@ -204,7 +204,7 @@ def initialize(relationship_matrix_file, table_size):
 		temp_graph.add_edge(guest[0], guest[1], weight=weight)
 
 	# Does not like "Empty Seat" guest, so they must be numbered
-	relationship_matrix_raw = nx.to_numpy_matrix(
+	relationship_matrix_raw = nx.to_numpy_array(
 		temp_graph.to_undirected(), nodelist=guest_list
 	)
 	relationship_matrix = relationship_matrix_raw / 100

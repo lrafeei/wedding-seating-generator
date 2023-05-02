@@ -215,47 +215,83 @@ def initialize(relationship_matrix_file, table_size):
 
 
 def valid_csv(file_name):
-    try:
-        with open(file_name, newline='') as csvfile:
-            start = csvfile.read()
+	"""
+	Returns True if valid CSV
+	Returns False if not valid
+	-Check for file not existing
+	-Check for newlines in file
+	-Check for symbols
+	-Need to check for:
+		-Symmetry in names (on row 1 and colummn 1)
+		-Make sure nothing is in the "black zone"
+		-Check for duplicate data in "top" and "bottom" areas.  Check to see if they match.
+		-Same number of rows/columns for all
+		-Anything other than numbers in the rest of the CSV
+			*The customer can add whatever number they want.
+	"""
+	if not file_name:
+		return False
+	
+	try:
+		with open(file_name, newline='') as csvfile:
+			start = csvfile.read()
 
-            # isprintable does not allow newlines
+			# isprintable does not allow newlines
 			# printable does not allow umlauts
-            if not all([char in printable or char.isprintable() for char in start]):
-                return False
-            csv.Sniffer().sniff(start)	# returns a dialect
-            return True
-    except csv.Error:
-        return False
+			if not all([char in printable or char.isprintable() for char in start]):
+				return False
+			csv.Sniffer().sniff(start)	# returns a dialect
+			return True
+	except (csv.Error, FileNotFoundError):
+		return False
+	
+
+def valid_table_size(table_size):
+	"""
+	Tests the validity of the input for the 
+	size of the table.  For now, our program
+	assumes that all tables are the same size.
+	Return table_size as int if valid.
+	Return False if not valid.
+ 	"""   	
+	try:
+		table_size = int(table_size)
+		if table_size > 0:
+			return table_size
+		return False
+	except:
+		return False
+
+
+def valid_granularity(granularity):
+	"""
+	Returns GRANULARITY if valid
+	Returns False if not valid
+	"""
+	if granularity in ["", "0", "1", "2"]:
+		GRANULARITY = 100 if granularity in ["", "0"] else pow(10,2+int(granularity))
+		return GRANULARITY
+	return False
 
 
 def main(csv_file):
 	# Test to see if input is valid CSV.
-	if csv_file and valid_csv(csv_file):
+	if valid_csv(csv_file):
 		relationship_matrix_file = csv_file
 	else:
 		raise Exception("CSV not valid.  Exiting Program.")  		
 
 	# Test table_size input for validity:
 	print("Enter the number of people per table: ")
-	try:
-		TABLE_SIZE = int(input())
-		assert TABLE_SIZE > 0	
-	except (ValueError, AssertionError):
-		print("Table size needs to be an integer 1 or greater.  Exiting Program.")
-		sys.exit(1)
+	TABLE_SIZE = valid_table_size(input())
+	if not TABLE_SIZE:
+		raise ValueError("Table size needs to be an integer 1 or greater.  Exiting Program.")
 	
 	# Test granularity input for validity:
 	print("Enter the desired granularity.  Leave blank for default (regular).  Options: 0=regular, 1=fine, 2=super fine: ")
-	try:
-		granularity_input = input()
-		assert granularity_input in ["", "0", "1", "2"]
-		GRANULARITY = 100 if granularity_input in ["", "0"] else pow(10,2+int(granularity_input))
-		print("Calculating now.  Results will be available in seating_options.txt")
-	except (ValueError, AssertionError):
-		print("Invalid granularity input.  Exiting Program.")
-		sys.exit(1)
-
+	GRANULARITY = valid_granularity(input())
+	if not GRANULARITY:
+		raise ValueError("Invalid granularity input.  Must be [blank], 0, 1, or 2.  Exiting Program.")
 
 	top_10_result = []
 	GUEST_COUNT, guest_list, relationship_matrix = initialize(relationship_matrix_file, TABLE_SIZE)

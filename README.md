@@ -42,8 +42,6 @@ Ten seating arrangement options for all guests per table.  This will be in "seat
 
 ## Left to do for cleanup of code:
   * Add tests!
-  * Remove use of global variables
-  * Update version of networkx to run on latest version
 
 ## To do for future iterations:
   * Add non-mutable settings.  This would make it so that certain pairings (i.e. couples) cannot be separated under any circumstances.

@@ -1,326 +1,344 @@
 #!/usr/local/bin
 
+import copy
+import argparse
+import pathlib
 import networkx as nx
 import numpy as np
 import math
 import sys
 import csv
-from string import printable
 
-# This program uses simulated annealing to determine the best
-# seating chart arrangement for a wedding.
-# (Simulated annealing works well for "escaping" local maxima)
-# inputs : table size, guest matrix (which also has # of guests)
-# outputs : table arrangement with lowest cost
+"""
+This program uses simulated annealing to determine
+the best seating chart arrangement for a wedding.
+(Simulated annealing works well for "escaping" local maxima)
+"""
 
-
-def parse(matrix):
-	relationship_matrix_dict = dict()
-	# Format: {("Lalleh Rafeei", "Rob Wheaton"): -50}
-	with open(matrix) as file:
-		lines = file.readlines()
-
-	for line_num, line in enumerate(lines):
-		line_array = line.strip().split(",")
-		if line_num == 0:
-			guest_list = line_array
-		else:
-			for index, relationship in enumerate(line_array):
-				if index > 0 and relationship:
-					entry = {(line_array[0], guest_list[index]): int(relationship)}
-					relationship_matrix_dict.update(entry)
-
-	return relationship_matrix_dict, guest_list
+# Global Variables:
+GRANULARITY = 1
+TABLE_SIZE = None
+GUEST_COUNT = None
 
 
-def random_initial_table_generator(guest_count, guests_per_table):
-	"""
-	Create function that will create an initial table arrangement to “swap” throughout.
-	Table must be [guest_count] wide and [number of tables] in height
-	Table must contain [guests per table] 1s and the rest 0s
-	"""
-	extra_people = guest_count % guests_per_table
-	fillers_needed = (
-		guests_per_table - extra_people
-	)  # This is needed to have each spot available
-	number_of_tables = math.ceil(guest_count / guests_per_table)
-	initialized_guest_tables = np.zeros(
-		(number_of_tables, guest_count + fillers_needed), dtype=int
-	)
+def parse(matrix_file):
+    """
+    Parse the relationship matrix file.
+    
+    Args:
+        matrix_file (CSV): Relationship matrix file.
 
-	# Go through first row, replace first 8 values with 1, then go to second row, continue on same index
-	row = -1  # index % guests_per_table == 0 when index == 0
-	for index in range(guest_count + fillers_needed):
-		# if index % 8, move down to the next row
-		if index % guests_per_table == 0:
-			row += 1
-		initialized_guest_tables[row][index] = 1
+    Returns:
+        dict: Relationship matrix dict, formatted: {("Lalleh Rafeei", "Lalleh's First Husband"): -50}
+        list: guest list
+    """
+    relationship_matrix_dict = dict()
+    with open(matrix_file) as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            entry = {(row[""], guest): int(relationship) for guest, relationship in row.items() if (guest and relationship)}
+            relationship_matrix_dict.update(entry)
 
-	return initialized_guest_tables
+        # The first item in the list is a blank value, so we need to trim this.
+        guest_list = reader.fieldnames[1:]
+
+    return relationship_matrix_dict, guest_list
+
+
+def random_initial_table_generator():
+    """
+    Create function that will create an initial table arrangement to “swap” throughout.
+    Table must be [GUEST_COUNT] wide and [number of tables] in height
+    Table must contain [guests per table] 1s and the rest 0s
+    """
+    number_of_tables = math.ceil(GUEST_COUNT / TABLE_SIZE)
+    number_of_seats = number_of_tables * TABLE_SIZE     # This will yield a value that includes "fillers"
+
+    initialized_guest_tables = np.zeros(
+        (number_of_tables, number_of_seats), dtype=int
+    )
+
+    # Go through first row, replace first TABLE_SIZE values with 1,
+    # then go to second row, resume from current index, et cetera.
+    row = -1  # index % TABLE_SIZE == 0 when index == 0
+    for index in range(number_of_seats):
+        if index % TABLE_SIZE == 0:
+            row += 1
+        initialized_guest_tables[row][index] = 1
+
+    return initialized_guest_tables
 
 
 def anneal(
-	pos_current,
-	guest_list,
-	table_count,
-	relationship_matrix,
-	queue=None,
-	temperature=1.0,
-	temperature_min=0.00001,
-	alpha=0.99,
-	n_iter=100,
+    pos_current,
+    guest_list,
+    table_count,
+    relationship_matrix,
+    queue=None,
+    temperature=1.0,
+    temperature_min=0.00001,
+    alpha=0.99,
+    n_iter=10,
 ):
-	def reshape_to_table_seats(position):
-		table_seats = position.reshape(table_count, len(guest_list))
-		return table_seats
+    def reshape_to_table_seats(position):
+        table_seats = position.reshape(table_count, len(guest_list))
+        return table_seats
 
 
-	def cost(position):
-		table_seats = reshape_to_table_seats(position)
-		table_costs = table_seats.dot(relationship_matrix.dot(table_seats.T))
-		table_cost = np.trace(table_costs)
-		return table_cost
+    def cost(position):
+        table_seats = reshape_to_table_seats(position)
+        table_costs = table_seats.dot(relationship_matrix.dot(table_seats.T))
+        table_cost = np.trace(table_costs)
+        return table_cost
 
 
-	def take_step(cur_arrangement):
-		table_seats = reshape_to_table_seats(np.array(cur_arrangement, copy=True))
-		table_from, table_to = np.random.choice(table_count, 2, replace=False)
+    def take_step(cur_arrangement):
+        table_seats = reshape_to_table_seats(np.array(cur_arrangement, copy=True))
+        table_from, table_to = np.random.choice(table_count, 2, replace=False)
 
-		table_from_guests = np.where(table_seats[table_from] == 1)[0]
-		table_to_guests = np.where(table_seats[table_to] == 1)[0]
+        table_from_guests = np.where(table_seats[table_from] == 1)[0]
+        table_to_guests = np.where(table_seats[table_to] == 1)[0]
 
-		table_from_guest = np.random.choice(table_from_guests)
-		table_to_guest = np.random.choice(table_to_guests)
+        table_from_guest = np.random.choice(table_from_guests)
+        table_to_guest = np.random.choice(table_to_guests)
 
-		table_seats[table_from, table_from_guest] = 0
-		table_seats[table_from, table_to_guest] = 1
-		table_seats[table_to, table_to_guest] = 0
-		table_seats[table_to, table_from_guest] = 1
-		return table_seats
+        table_seats[table_from, table_from_guest] = 0
+        table_seats[table_from, table_to_guest] = 1
+        table_seats[table_to, table_to_guest] = 0
+        table_seats[table_to, table_from_guest] = 1
+        return table_seats
 
 
-	# The nuts and bolts of the annealing algorithm:
-	# If at the beginning of the program's operation, the
-	# algorithm is more likely to escape its local maxima
-	# by not always accepting the (perceived) maximum
-	# value and to try other options anyway.
-	# This is compared to a random number (from 0 to 1)
-	# to make that decision
-	def probability_of_acceptance(cost_old, cost_new, temperature):
-		if cost_new < cost_old:
-			a = 1
-		else:
-			a = np.exp((cost_old - cost_new) / temperature)
-		return a
+    # The nuts and bolts of the annealing algorithm:
+    # At the beginning of the program's operation, the
+    # algorithm is more likely to escape its local maxima
+    # by not always accepting the (perceived) maximum
+    # value and to try other options anyway.
+    # This is compared to a random number (from 0 to 1)
+    # to make that decision
+    def probability_of_acceptance(cost_old, cost_new, temperature):
+        if cost_new < cost_old:
+            a = 1
+        else:
+            a = np.exp((cost_old - cost_new) / temperature)
+        return a
 
-	top_10_seating_arrangements = queue if queue else []
-	cost_old = cost(pos_current)
-	cost_max = cost_old
-	pos_max = pos_current
+    top_10_seating_arrangements = queue if isinstance(queue, list) else [] 
+    cost_old = cost(pos_current)
+    cost_max = cost_old
+    pos_max = pos_current
 
-	while temperature > temperature_min:
-		for _ in range(n_iter):
-			pos_new = take_step(pos_current)
-			cost_new = cost(pos_new)
-			if cost_new < cost_max:
-				pos_max = pos_new
-				cost_max = cost_new
-				# Collect for top 10:
-				top_10_seating_arrangements = top_10_queue(
-					pos_max, cost_max, top_10_seating_arrangements
-				)
-			prob_accept = probability_of_acceptance(cost_old, cost_new, temperature)
-			if prob_accept > np.random.random():
-				pos_current = pos_new
-				cost_old = cost_new
-		temperature *= alpha
-	return top_10_seating_arrangements
+    while temperature > temperature_min:
+        for _ in range(n_iter):
+            pos_new = take_step(pos_current)
+            cost_new = cost(pos_new)
+            if cost_new < cost_max:
+                pos_max = pos_new
+                cost_max = cost_new
+                # Collect for top 10:
+                top_10_seating_arrangements = top_10_queue(
+                    pos_max, cost_max, top_10_seating_arrangements
+                )
+            prob_accept = probability_of_acceptance(cost_old, cost_new, temperature)
+            if prob_accept > np.random.random():
+                pos_current = pos_new
+                cost_old = cost_new
+        temperature *= alpha
+    return top_10_seating_arrangements
 
 
 def top_10_queue(position, cur_cost, queue):
-	# This will sort by the cost (second element of tuple)
-	# and therefore, the most optimal seating arrangement
-	# will be the first element
+    """
+    This will sort by the cost (second element of tuple)
+    placing the most optimal seating arrangement first
+    """
 
-	if not len(queue):
-		queue.append((position, cur_cost))
-		return queue
+    if not len(queue):
+        queue.append((position, cur_cost))
+        return queue
 
-	queue.sort(key=lambda x: x[1])
+    queue.sort(key=lambda x: x[1])
 
-	# Last element will be the max cost
-	if len(queue) and cur_cost < queue[-1][1]:
-		# if queue is already at 10, we need to pop the entry with the
-		# highest value (least optimized in our case):
-		if len(queue) == 10:
-			# Pop the least optimal seating arrangement
-			del queue[-1]
-		queue.append((position, cur_cost))
+    # Last element will be the max cost
+    if len(queue) and cur_cost < queue[-1][1]:
+        # if queue is already at 10, we need to pop the entry with the
+        # highest value (least optimized in our case):
+        if len(queue) == 10:
+            # Pop the least optimal seating arrangement
+            del queue[-1]
+        queue.append((position, cur_cost))
 
-	return queue
-
-
-def readability(result, guest_list, TABLE_SIZE):
-	# Print out names instead of 0/1
-
-	tables = []
-	for table in result:
-		guest_index = 0
-		guests = [None] * TABLE_SIZE
-		for guest in range(len(table)):
-			if table[guest] == 1:
-				guests[guest_index] = guest_list[guest]
-				guest_index += 1
-		tables.append(guests)
-	return tables
+    return queue
 
 
-def initialize(relationship_matrix_file, table_size):
-	"""
-	relationship_matrix_file: "guest_matrix.csv"
-	table_size: number of people per table
-	"""
+def readability(result, guest_list):
+    """
+    Print out names instead of 0/1
+    to make results human readable
+    """
 
-	relationship_edges, guest_list = parse(relationship_matrix_file)
-	guest_list = guest_list[1:]
-
-	TABLE_SIZE = table_size
-	GUEST_COUNT = len(guest_list)
-
-	# This does not work with uneven guest counts, so we need to make filler guests
-	# who have no relationship established with anyone.
-	extra_people = GUEST_COUNT % TABLE_SIZE
-	fillers_needed = TABLE_SIZE - extra_people
-
-	temp_graph = nx.Graph()
-
-	# Add Empty Seats because the algorithm cannot handle blank spaces
-	# A relationship of weight=0 is added to the first guest so that
-	# the filler spaces can function as regular spots.
-	for i in range(fillers_needed):
-		name = f"Empty Seat {i}"
-		guest_list.append(name)
-		temp_graph.add_edge(guest_list[0], name, weight=0)
-
-	for guest, weight in relationship_edges.items():
-		temp_graph.add_edge(guest[0], guest[1], weight=weight)
-
-	# Does not like "Empty Seat" guest, so they must be numbered
-	relationship_matrix_raw = nx.to_numpy_array(
-		temp_graph.to_undirected(), nodelist=guest_list
-	)
-	relationship_matrix = relationship_matrix_raw / 100
-
-	return GUEST_COUNT, guest_list, relationship_matrix
+    tables = []
+    for table in result:
+        guest_index = 0
+        guests = [None] * TABLE_SIZE
+        for guest in range(len(table)):
+            if table[guest] == 1:
+                guests[guest_index] = guest_list[guest]
+                guest_index += 1
+        tables.append(guests)
+    return tables
 
 
-def valid_csv(file_name):
-	"""
-	Returns True if valid CSV
-	Returns False if not valid
-	-Check for file not existing
-	-Check for newlines in file
-	-Check for symbols
-	-Need to check for:
-		-Symmetry in names (on row 1 and colummn 1)
-		-Make sure nothing is in the "black zone"
-		-Check for duplicate data in "top" and "bottom" areas.  Check to see if they match.
-		-Same number of rows/columns for all
-		-Anything other than numbers in the rest of the CSV
-			*The customer can add whatever number they want.
-	"""
-	if not file_name:
-		return False
-	
-	try:
-		with open(file_name, newline='') as csvfile:
-			start = csvfile.read()
-
-			# isprintable does not allow newlines
-			# printable does not allow umlauts
-			if not all([char in printable or char.isprintable() for char in start]):
-				return False
-			csv.Sniffer().sniff(start)	# returns a dialect
-			return True
-	except (csv.Error, FileNotFoundError):
-		return False
-	
-
-def valid_table_size(table_size):
-	"""
-	Tests the validity of the input for the 
-	size of the table.  For now, our program
-	assumes that all tables are the same size.
-	Return table_size as int if valid.
-	Return False if not valid.
- 	"""   	
-	try:
-		table_size = int(table_size)
-		if table_size > 0:
-			return table_size
-		return False
-	except:
-		return False
+def granularity_conversion(granularity_input):
+    return pow(GUEST_COUNT//2, 1+granularity_input)
 
 
-def valid_granularity(granularity):
-	"""
-	Returns GRANULARITY if valid
-	Returns False if not valid
-	"""
-	if granularity in ["", "0", "1", "2"]:
-		GRANULARITY = 100 if granularity in ["", "0"] else pow(10,2+int(granularity))
-		return GRANULARITY
-	return False
+def initialize(relationship_matrix_file, granularity_input):
+    """
+    relationship_matrix_file: "guest_matrix.csv"
+    """
+
+    global GUEST_COUNT, GRANULARITY
+
+    relationship_edges, guest_list = parse(relationship_matrix_file)
+
+    GUEST_COUNT = len(guest_list)
+    if TABLE_SIZE >= GUEST_COUNT:
+        # We can end the program right now. There
+        # is only one option and that is to seat
+        # everyone at the same table.
+        print("There is no need for this program. There is room for everyone to sit at the same table.")
+        return None, None
+
+    GRANULARITY = granularity_conversion(granularity_input)
+
+    # This program needs to have the same number of guests
+    # as table seats, which will likely not happen. To
+    # solve this issue, we need to create "filler" guests
+    # who have no relationship established with anyone.
+    extra_people = GUEST_COUNT % TABLE_SIZE
+    fillers_needed = TABLE_SIZE - extra_people
+
+    temp_graph = nx.Graph()
+
+    # A relationship of weight=0 is added to the first guest so that
+    # the filler spaces can function as regular spots.
+    for i in range(fillers_needed):
+        name = f"Empty Seat {i}"
+        guest_list.append(name)
+        temp_graph.add_edge(guest_list[0], name, weight=0)
+
+    for guest, weight in relationship_edges.items():
+        temp_graph.add_edge(guest[0], guest[1], weight=weight)
+
+    relationship_matrix_raw = nx.to_numpy_array(
+        temp_graph.to_undirected(), nodelist=guest_list
+    )
+    relationship_matrix = relationship_matrix_raw / 100
+
+    return guest_list, relationship_matrix
 
 
-def main(csv_file):
-	# Test to see if input is valid CSV.
-	if valid_csv(csv_file):
-		relationship_matrix_file = csv_file
-	else:
-		raise Exception("CSV not valid.  Exiting Program.")  		
+def table_size_checker(table_size):
+    """
+    Tests the validity of the input for the 
+    size of the table.  For now, our program
+    assumes that all tables are the same size.
+    Return table_size as int if valid.
+    """
+    try:
+        int_table_size = int(table_size)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{table_size} is not a valid integer.")
+    if int_table_size <= 0:
+        raise argparse.ArgumentTypeError(f"{table_size} is not a positive integer.")
+    return int_table_size
 
-	# Test table_size input for validity:
-	print("Enter the number of people per table: ")
-	TABLE_SIZE = valid_table_size(input())
-	if not TABLE_SIZE:
-		raise ValueError("Table size needs to be an integer 1 or greater.  Exiting Program.")
-	
-	# Test granularity input for validity:
-	print("Enter the desired granularity.  Leave blank for default (regular).  Options: 0=regular, 1=fine, 2=super fine: ")
-	GRANULARITY = valid_granularity(input())
-	if not GRANULARITY:
-		raise ValueError("Invalid granularity input.  Must be [blank], 0, 1, or 2.  Exiting Program.")
 
-	top_10_result = []
-	GUEST_COUNT, guest_list, relationship_matrix = initialize(relationship_matrix_file, TABLE_SIZE)
-	table_count = math.ceil(GUEST_COUNT / TABLE_SIZE)
+def csv_file_checker(csv_file):
+    """
+    Tests whether or not the CSV file exists
+    and whether it is a valid CSV file.
+    """
+    try:
+        with open(csv_file, newline='') as csvfile:
+            # Just check to see if file is readable
+            # by reading first line.
+            csvfile.readline()
+    except FileNotFoundError:
+        raise argparse.ArgumentTypeError(f"{csv_file} not found.")
+    except csv.Error as csv_exc:
+        raise argparse.ArgumentTypeError(f"CSV file exception was found: {csv_exc}")
+    except Exception as exc:
+        raise argparse.ArgumentTypeError(f"Exception was found: {exc}")
+    else:
+        return csv_file
 
-	# Logic for running annealing 10 times while extracting
-	# top 10 results from those combined runs:
 
-	for percent in range(10):
-		# Generate a random array for this instead of manually filling in a
-		# random array.  This gives us our starting point for our program.
-		# The shuffling will happen from this point.
-		table_seats_a = random_initial_table_generator(GUEST_COUNT, TABLE_SIZE)  		
-		top_10_result = anneal(table_seats_a, guest_list, table_count, relationship_matrix, top_10_result, n_iter=GRANULARITY)
-		print("%d Percent Complete" % ((percent+1)*10))
+def argument_parser(override=None):
+    parser = argparse.ArgumentParser(
+            prog="seating_chart",
+            description="Seating Chart Generator",
+            usage="python %(prog)s.py -f/--csv-file -s/--table-size [-g/--granularity]",
+    )
+    parser.add_argument("-f", "--csv-file", type=csv_file_checker, help="CSV file", required=True)
+    parser.add_argument("-s", "--table-size", type=table_size_checker, help="A positive integer", required=True)
+    parser.add_argument("-g", "--granularity", type=int, choices=[0, 1, 2], default=0, help="0, 1 or 2 for coarse, medium, or fine granularity")
 
-	with open("seating_options.txt", "a") as file:
-		for result in top_10_result:
-			position, cur_cost = result
-			for index, tables in enumerate(
-				readability(position, guest_list, TABLE_SIZE)
-			):
-				file.write("Table " + str(index + 1))
-				file.write("\n")
-				file.write(", ".join(tables))
-				file.write("\n")
-			file.write(str(cur_cost))
-			file.write("\n\n")
+    parsed_args = parser.parse_args(override)
+    csv_file = getattr(parsed_args, "csv_file")
+    table_size = getattr(parsed_args, "table_size")
+    granularity_input = getattr(parsed_args, "granularity")
+
+    return csv_file, table_size, granularity_input
+
+
+def main(matrix_file, table_size, granularity_input):
+    global TABLE_SIZE
+
+    TABLE_SIZE = table_size
+    relationship_matrix_file = matrix_file
+
+    top_10_result = []
+    guest_list, relationship_matrix = initialize(relationship_matrix_file, granularity_input)
+    table_count = math.ceil(GUEST_COUNT / TABLE_SIZE)
+
+    if guest_list is None and relationship_matrix is None:
+        # One table is large enough for all the guests.
+        # Exit program now.
+        return
+
+    # Logic for running annealing 10 times while extracting
+    # top 10 results from those combined runs:
+
+    for percent in range(10):
+        # Generate a random array for this instead of manually filling in a
+        # random array.  This gives us our starting point for our program.
+        # The shuffling will happen from this point.
+        table_seats_a = random_initial_table_generator()
+        top_10_result = anneal(table_seats_a, guest_list, table_count, relationship_matrix, top_10_result, n_iter=GRANULARITY)
+        print("%d Percent Complete" % ((percent+1)*10))
+
+    with open("seating_options.txt", "a") as file:
+        for result in top_10_result:
+            position, cur_cost = result
+            for index, tables in enumerate(
+                readability(position, guest_list)
+            ):
+                file.write("Table " + str(index + 1))
+                file.write("\n")
+                file.write(", ".join(tables))
+                file.write("\n")
+            file.write(str(cur_cost))
+            file.write("\n")
+            file.write("="*50)
+            file.write("\n\n")
 
 
 if __name__ == "__main__":
-	main(sys.argv[1])
+    parsed_args = argument_parser()
+    main(*parsed_args)
+
+
+
+

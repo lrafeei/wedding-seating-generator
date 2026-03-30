@@ -1,51 +1,55 @@
 import pytest
-from seating_chart import valid_csv
-import io
-import sys
+from argparse import ArgumentTypeError
+from seating_chart import argument_parser, csv_file_checker, table_size_checker
 
 
-# std_input = io.StringIO("")
-
-# Test inputs from command line
-@pytest.mark.parametrize("csv_file,expected", [
-    ("guest_matrix.csv", True),
-    ("guest_matrix_bad.csv", False),
-])
-def test_valid_csv(csv_file,expected):
-    assert valid_csv(csv_file) == expected
+def test_valid_csv_file():
+    assert "example_matrix.csv" == csv_file_checker("example_matrix.csv")
 
 
-# # parametrize valid, not valid, uneven, weird values in the middle of the matrix (these are not actually tested)
-# @pytest.parametrize("input", [])
-# def test_valid_file_input(input):
-#     pass
+@pytest.mark.parametrize(
+        "csv_file",
+        [
+            None,
+            "non_existent_file.csv",
+            "non_csv_file.txt",
+            "invalid_csv_formatted_file.csv",
+        ],
+        ids=[
+            "No file provided",
+            "Non-existent file",
+            "Non-CSV file",
+            "Invalid CSV formatted file",
+        ],
+)
+def test_invalid_csv_file(csv_file):
+    with pytest.raises(ArgumentTypeError):
+        csv_file_checker(csv_file)
 
-# # parametrize
-# @pytest.mark.parametrize("table_size,valid", [
-#     (0, False),
-#     (10, True),
-#     (-9, False),
-#     (10.2, False),
-#     ("Not an int", False),
-# ])
-# def test_valid_table_size(monkeypatch, table_size, valid):
-#     table_size_input = io.StringIO(str(table_size))
-#     # THIS DOES NOT WORK
-#     with pytest.raises(Exception) as error:
-#         monkeypatch.setattr("sys.stdin", table_size_input, raising=True)
-#     assert (error.type == ValueError) == valid
+
+@pytest.mark.parametrize("table_size", (4, "4"), ids=["integer", "string of integer"])
+def test_valid_table_size(table_size):
+    assert 4 == table_size_checker(table_size)
 
 
-# # parametrize
-# @pytest.parametrize("granularity,valid", [
-#     ("", True),
-#     ("0", True),
-#     ("1", True),
-#     ("2", True),
-#     ("3", False),
-#     ("-1", False),
-#     ("1.1", False),
-#     ("Not an int", False),
-# ])
-# def test_valid_granularity(granularity,valid):
-#     pass
+@pytest.mark.parametrize(
+        "table_size",
+        (None, 0, -3, 0.5, "four"),
+        ids=[
+            "No table size provided",
+            "table_size==0",
+            "Negative table size",
+            "Fraction table size",
+            "Non-integer table size",
+        ],
+)
+def test_invalid_table_size(table_size):
+    with pytest.raises(ArgumentTypeError):
+        table_size_checker(table_size)
+
+
+def test_table_size_greater_than_guest_count():
+    "Seat everyone at one table" == main("example_matrix.csv", 8, None)
+
+
+

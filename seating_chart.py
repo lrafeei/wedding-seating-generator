@@ -8,6 +8,7 @@ import numpy as np
 import math
 import sys
 import csv
+import logging
 
 """
 This program uses simulated annealing to determine
@@ -15,10 +16,13 @@ the best seating chart arrangement for a wedding.
 (Simulated annealing works well for "escaping" local maxima)
 """
 
-# Global Variables:
+# Globals:
 GRANULARITY = 1
 TABLE_SIZE = None
 GUEST_COUNT = None
+DEBUG_MODE = False
+
+_logger = logging.getLogger(__name__)
 
 
 def parse(matrix_file):
@@ -35,10 +39,36 @@ def parse(matrix_file):
     relationship_matrix_dict = dict()
     with open(matrix_file) as file:
         reader = csv.DictReader(file)
+        #breakpoint()
         for row in reader:
-            entry = {(row[""], guest): int(relationship) for guest, relationship in row.items() if (guest and relationship)}
+            # This will filter entries that have a specified relationship value and no
+            # duplicates.  In this case, ("Lalleh Rafeei", "Lalleh's First Husband")
+            # and ("Lalleh's First Husband", "Lalleh Rafeei") are duplicates.
+            try:
+                entry = {(row[""], guest): int(relationship) for guest, relationship in row.items() if (guest and relationship and ((guest, row[""]) not in relationship_matrix_dict))}
+            except ValueError:
+                raise ValueError(f"Non-integer value found in {[x for x in row.values() if not isinstance(x, int)]}")
+
+            if DEBUG_MODE:
+                duplicate_entries = {(row[""], guest): int(relationship) for guest, relationship in row.items() if (guest and relationship and ((guest, row[""]) in relationship_matrix_dict))}
+                for guest_relationship, relationship_weight in duplicate_entries.items():
+                    if relationship_matrix_dict[(guest_relationship[1], guest_relationship[0])] == relationship_weight:
+                        _logger.warning("Duplicate in relationship matrix found.  Ignoring one of the two values")
+                    else:
+                        _logger.warning(
+                            "Duplicate relationships found with different relationship values. "
+                            "%s and %s have weights %d and %d.  %d will be used.",
+                            guest_relationship[0],
+                            guest_relationship[1],
+                            relationship_matrix_dict[(guest_relationship[1], guest_relationship[0])],
+                            relationship_weight,
+                            relationship_matrix_dict[(guest_relationship[1], guest_relationship[0])],
+                        )
             relationship_matrix_dict.update(entry)
 
+        if reader.fieldnames[0] != "":
+            # The format of this is incorrect.  Exit program
+            raise ValueError("Unable to parse file.  Exiting Program.")
         # The first item in the list is a blank value, so we need to trim this.
         guest_list = reader.fieldnames[1:]
 
@@ -197,7 +227,6 @@ def initialize(relationship_matrix_file, granularity_input):
     """
     relationship_matrix_file: "guest_matrix.csv"
     """
-
     global GUEST_COUNT, GRANULARITY
 
     relationship_edges, guest_list = parse(relationship_matrix_file)
@@ -275,20 +304,24 @@ def csv_file_checker(csv_file):
         return csv_file
 
 
-def argument_parser(override=None):
+def argument_parser():
+    global DEBUG_MODE
+
     parser = argparse.ArgumentParser(
             prog="seating_chart",
             description="Seating Chart Generator",
-            usage="python %(prog)s.py -f/--csv-file -s/--table-size [-g/--granularity]",
+            usage="python %(prog)s.py -f/--csv-file -s/--table-size [-g/--granularity] [-d/--debug]",
     )
     parser.add_argument("-f", "--csv-file", type=csv_file_checker, help="CSV file", required=True)
     parser.add_argument("-s", "--table-size", type=table_size_checker, help="A positive integer", required=True)
     parser.add_argument("-g", "--granularity", type=int, choices=[0, 1, 2], default=0, help="0, 1 or 2 for coarse, medium, or fine granularity")
+    parser.add_argument("-d", "--debug", action="store_true", help="Enable debug mode")
 
-    parsed_args = parser.parse_args(override)
+    parsed_args = parser.parse_args()
     csv_file = getattr(parsed_args, "csv_file")
     table_size = getattr(parsed_args, "table_size")
     granularity_input = getattr(parsed_args, "granularity")
+    DEBUG_MODE = getattr(parsed_args, "debug", False)
 
     return csv_file, table_size, granularity_input
 
@@ -306,7 +339,7 @@ def main(matrix_file, table_size, granularity_input):
     if guest_list is None and relationship_matrix is None:
         # One table is large enough for all the guests.
         # Exit program now.
-        return
+        return "Seat everyone at one table"
 
     # Logic for running annealing 10 times while extracting
     # top 10 results from those combined runs:
@@ -319,7 +352,7 @@ def main(matrix_file, table_size, granularity_input):
         top_10_result = anneal(table_seats_a, guest_list, table_count, relationship_matrix, top_10_result, n_iter=GRANULARITY)
         print("%d Percent Complete" % ((percent+1)*10))
 
-    with open("seating_options.txt", "a") as file:
+    with open("seating_options.txt", "w") as file:
         for result in top_10_result:
             position, cur_cost = result
             for index, tables in enumerate(

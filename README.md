@@ -6,9 +6,9 @@ This program takes in a csv generated Relationship Matrix and outputs the top te
 `python seating_chart.py -f/--csv-file CSV_FILE -s/--table-size TABLE_SIZE [-g/--granularity GRANULARITY]`
 
 where:
-    * `CSV_FILE`: the name of the relationship matrix, in CSV form
-    * `TABLE_SIZE`: (int>0) the number of people that can be seated at a table
-    * `GRANULARITY`: 0 for coarse, 1 for medium, or 2 for fine granularity.  CAUTION: The fine granularity setting may crash on your machine.  See Future Iterations section for more details
+  * `CSV_FILE`: the name of the relationship matrix, in CSV form
+  * `TABLE_SIZE`: (int>0) the number of people that can be seated at a table
+  * `GRANULARITY`: 0 for coarse, 1 for medium, or 2 for fine granularity.  CAUTION: The fine granularity setting may crash on your machine.  See Future Iterations section for more details
 
 ## Inputs:
 A CSV generated Relationship Matrix.  Relationship values range from -50 to 50:
